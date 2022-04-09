@@ -6,7 +6,6 @@ import warnings
 from itertools import product, permutations, combinations_with_replacement, chain
 from math import floor
 import streamlit as st
-import matplotlib.pyplot as plt
 warnings.filterwarnings('ignore')
 
 data = np.load('preprocessing-data.npz')
