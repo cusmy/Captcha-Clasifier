@@ -7,6 +7,11 @@ from itertools import product, permutations, combinations_with_replacement, chai
 from math import floor
 import streamlit as st
 warnings.filterwarnings('ignore')
+st.set_page_config(
+     page_title="Identifikasi Captcha",
+     page_icon="🧊",
+     layout="wide",
+     initial_sidebar_state="expanded")
 
 data = np.load('preprocessing-data.npz')
 X, y_labels, y = data['X'], data['y_labels'], data['y']
@@ -32,27 +37,36 @@ def find_separators(frame, n):
     return np.floor(np.linspace(0, frame.shape[1], n+1)[1:-1]).astype(np.uint16)
 
 def run_data(input):
-    img = (X[input] * 255)[:, :, 0].astype(np.uint8)
+    img = (X[input-1] * 255)[:, :, 0].astype(np.uint8)
+    col11, col22, col33 = st.columns(3)
+    with col11:
+        st.write()
 
-    st.image(img)
+    with col22:
+        st.write("Citra Asli")
+        st.image(img)
+
+    with col33:
+        st.write()
 
     inverted = 255 - img
 
-    st.write("Citra Negatif")
-
-    st.image(inverted)
-
     ret, thresholded = cv.threshold(inverted, 140, 255, cv.THRESH_BINARY)
-
-    st.write("Treshold")
-
-    st.image(thresholded)
 
     blurred = cv.medianBlur(thresholded, 3)
 
-    st.write("Mengurangi Noise")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.write("Citra Negatif")
+        st.image(inverted)
 
-    st.image(thresholded)
+    with col2:
+        st.write("Threshold")
+        st.image(thresholded)
+
+    with col3:
+        st.write("Mengurangi Noise")
+        st.image(blurred)
 
     kernel = np.array([
         [0, 0, 1, 0, 0],
@@ -63,10 +77,6 @@ def run_data(input):
     ]).astype(np.uint8)
     
     ex = cv.morphologyEx(blurred, cv.MORPH_OPEN, kernel)
-
-    st.write("Transformasi Morfologi")
-
-    st.image(ex)
 
     kernel2 = np.array([
     [0, 0, 0, 0, 0],
@@ -79,18 +89,25 @@ def run_data(input):
     ]).astype(np.uint8)
     ex2 = cv.morphologyEx(ex, cv.MORPH_DILATE, kernel2)
 
-    st.image(ex2)
 
     mask = ex2
     processed = cv.bitwise_and(mask, blurred)
-    st.image(processed)
+    col4, col5, col6 = st.columns(3)
+    with col4:
+        st.write("Transformasi Morfologi Opening")
+        st.image(ex)
+
+    with col5:
+        st.write("Transformasi Morfologi Dilasi")
+        st.image(ex2)
+
+    with col6:
+        st.write("Transformasi Morfologi Dilasi Bitwise AND ")
+        st.image(processed)
 
     contours, hierachy = cv.findContours(processed, cv.RETR_CCOMP, cv.CHAIN_APPROX_SIMPLE)
     contours = [contours[k] for k in range(0, len(contours)) if hierachy[0, k, 3] == -1]
     contours.sort(key=lambda cnt: cv.boundingRect(cnt)[0])
-
-
-    st.image(cv.drawContours(cv.cvtColor(img, cv.COLOR_GRAY2RGB), contours, -1, (255, 0, 0), 1, cv.LINE_4), caption='Find Kontur')
 
     contour_bboxes = [cv.boundingRect(contour) for contour in contours]
     img_bboxes = cv.cvtColor(img, cv.COLOR_GRAY2RGB)
@@ -99,7 +116,15 @@ def run_data(input):
         img_bboxes = cv.rectangle(img_bboxes,
                               (left, top), (left+width, top+height),
                               (0, 255, 0), 1)
-    st.image(img_bboxes, caption='Box Kontur')
+    col7, col8 = st.columns(2)
+    with col7:
+        st.write("Mencari Kontur Pada Citra")
+        st.image(cv.drawContours(cv.cvtColor(img, cv.COLOR_GRAY2RGB), contours, -1, (255, 0, 0), 1, cv.LINE_4))
+
+    with col8:
+        st.write("Melakukan Selection area pada kontur Berupa Box")
+        st.image(img_bboxes)
+
 
     contours_features = pd.DataFrame.from_dict({
     'bbox_width': [bbox[2] for bbox in contour_bboxes],
@@ -114,28 +139,31 @@ def run_data(input):
 
     contour_features = contour_features_scaler.transform(contours_features[['bbox_width', 'bbox_height', 'area', 'extent', 'perimeter']])
     contour_num_chars = contour_classifier.predict(contour_features)
-
+    st.header("Extraksi Pada Kontur Menggunakan Metode SVM C")
     n = len(contours)
     cols = 2
     rows = n // cols
     if n % cols > 0:
         rows += 1
     rows = max(rows, 2)
-
+    st.header("Deteksi Jumlah Karakter Pada Kontur")
+    colss = st.columns(5)
     for i, j in product(range(0,rows), range(0,cols)):
         k = i * cols + j
         if k < n:
             left, top, width, height = contour_bboxes[k]
             img_bbox = cv.rectangle(cv.cvtColor(img, cv.COLOR_GRAY2RGB),
                                 (left, top), (left+width, top+height), (0, 255, 0), 1)
-        
-            st.write('Kontur {}, Jumlah Karakter: {}'.format(k, contour_num_chars[k]))
-            st.image(img_bbox)
+            colss[k].write('Kontur {}, Jumlah Karakter: {}'.format(k, contour_num_chars[k]))
+            colss[k].image(img_bbox)
+    
     P = contour_classifier.predict_proba(contour_features)
     configs = filter(lambda x: np.sum(x) == 5, combinations_with_replacement(range(0, 6), n))
     configs = list(frozenset(chain.from_iterable(map(lambda config: permutations(config, n), configs))))
     configs = np.array(configs, dtype=np.uint8)
     scores = np.zeros([len(configs)]).astype(np.float32)
+
+
     for i in range(0, len(configs)):
         scores[i] = np.prod(P[np.arange(0, n), configs[i]])
     best_config = configs[scores.argmax()]
@@ -154,15 +182,15 @@ def run_data(input):
     if num_frames % cols > 0:
         rows += 1
     rows = max(rows,2)
-
+    st.header("Identifikasi Jumlah Karakter Pada Frame")
+    colls = st.columns(5)
     for i, j in product(range(0,rows), range(0,cols)):
         k = i * cols + j
         if k < num_frames:
-            st.write('Frame {}. Jumlah Karakter: {}'.format(k, frame_num_chars[k]))
-            st.image(frames[k])
+            colls[k].write('Frame {}. Jumlah Karakter: {}'.format(k, frame_num_chars[k]))
+            colls[k].image(frames[k])
     frame = [frames[i] for i in range(0, num_frames) if frame_num_chars[i] > 1][-1]
     num_chars = frame_num_chars[frames.index(frame)]
-    st.image(frame)
 
 
     chars = []
@@ -174,11 +202,11 @@ def run_data(input):
         # membagi frame menjadi lebih dari 1 char
             splits = split_array(frame, find_separators(frame, num_chars), axis=1)
             chars.extend(splits)
-        
-
+    st.header("Identifikasi Ukuran Frame")
+    collls = st.columns(5)
     for i in range(0, 5):
-        st.image(chars[i])
-        st.write('Karakter {}, ukuran: {}'.format(i+1, chars[i].shape))
+        collls[i].image(chars[i])
+        collls[i].write('Karakter {}, ukuran: {}'.format(i+1, chars[i].shape))
 
     chars_processed = np.zeros([5, 40, 40, 1]).astype(np.float32)
     for i, char in zip(range(0, 5), chars):
@@ -206,12 +234,14 @@ def run_data(input):
             img = img[top:top+dh, :]
     
         chars_processed[i, :, :, 0] = img.astype(np.float32) / 255
-
+    st.header("Hasil Akhir")
+    collss = st.columns(5)
     for i in range(0, 5):
-        st.image(chars_processed[i, :, :, 0])
-        st.write('Karakter ke {}'.format(i+1))
-
-input = st.slider('pilih index gambar, daripada ngetik mending geser geser', 0, 1070, 25)
+        collss[i].image(chars_processed[i, :, :, 0])
+        collss[i].write('Karakter ke {}'.format(i+1))
+st.title("Kelompok 1")
+st.title("identifikasi Jumlah Karakter Pada Captcha")
+input = st.slider('pilih index gambar, daripada ngetik mending geser geser', 1, 1070, 25)
 btn = st.button("Proses")
 if btn:
 	run_data(input)
