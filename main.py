@@ -147,7 +147,7 @@ def run_data(input):
         rows += 1
     rows = max(rows, 2)
     st.header("Deteksi Jumlah Karakter Pada Kontur")
-    colss = st.columns(5)
+    colss = st.columns(8)
     for i, j in product(range(0,rows), range(0,cols)):
         k = i * cols + j
         if k < n:
@@ -182,7 +182,7 @@ def run_data(input):
     if num_frames % cols > 0:
         rows += 1
     rows = max(rows,2)
-    st.header("Identifikasi Jumlah Karakter Pada Frame")
+    st.header("Identifikasi Jumlah Karakter Pada Frame yang memiliki Karakter")
     colls = st.columns(5)
     for i, j in product(range(0,rows), range(0,cols)):
         k = i * cols + j
